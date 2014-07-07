@@ -1,11 +1,12 @@
 #!/usr/bin/env python
+#-*-coding=utf-8-*-
 
+from __future__ import division
 import wx
 import time
 import sys
 import os
 import threading
-import math
 
 import numpy as np
 import matplotlib
@@ -33,6 +34,55 @@ DiskRecordFileName = 'Disk.data'
 NetworkRecordFileName = 'Network.data'
 NullFileName = '/dev/null'
 
+def cpuinfo():
+  fp = open('/proc/stat','r')
+  data = fp.readline()
+  data = data[5:]
+  data = data.split()
+  for i in range(len(data)):
+    data[i] = int(data[i])
+  fp.close()
+  total = 0
+  for i in range(7):
+    total = total + data[i]
+  free = data[3]
+  return [total,free]
+def meminfo():
+  fp = open('/proc/meminfo','r')
+  data = []
+  for i in range(4):
+    data.append(fp.readline())
+  for i in range(len(data)):
+    temp = data[i].split(' ')
+    j = -1
+    for k in range(len(temp)):
+      if(temp[k]!=''):
+        j = j+1
+      if(j==1):
+        data[i] = temp[k]
+        break
+  Memtotal = int(data[0])
+  Memfree = int(data[1])
+  Buffers = int(data[2])
+  Cached = int(data[3])
+
+  usage = 100*(Memtotal-Memfree)/Memtotal
+  return usage
+
+def diskinfo():
+  fp = open('/proc/diskstats','r')
+  data = fp.readlines()
+  fp.close()
+  for i in range(len(data)):
+    if('sda' in data[i]):
+      temp = data[i].split()
+      if(temp[1] == '0'):
+        data = temp[3:]
+        break
+  for i in range(len(data)):
+    data[i] = int(data[i])
+  return [data[2],data[6]]
+
 class PageMonitoring(wx.Panel):
   def __init__(self, parent, parameter1, parameter2, parameter3):
     wx.Panel.__init__(self, parent)
@@ -57,7 +107,30 @@ class PageMonitoring(wx.Panel):
 
   def UpdatePlot(self):
     self.FigureCanvas.draw()
+class PageMonitoring3(wx.Panel):
+  def __init__(self, parent, parameter1, parameter2, parameter3):
+    wx.Panel.__init__(self, parent)
+  
+    self.Figure = matplotlib.figure.Figure((parameter1, parameter2), parameter3)
+    self.FigureCanvas = FigureCanvas(self, -1 ,self.Figure)
+    self.axes1 = self.Figure.add_subplot(2,1,1)
+    self.axes2 = self.Figure.add_subplot(2,1,2)
+    
+    self.NavigationToolbar = NavigationToolbar(self.FigureCanvas)
+  
+    self.SubBoxSizer = wx.BoxSizer(wx.HORIZONTAL)
+    self.SubBoxSizer.Add(self.NavigationToolbar, proportion = -1 , border = 2 , flag = wx.ALL | wx.EXPAND)
+ 
+    self.TopBoxSizer = wx.BoxSizer(wx.VERTICAL)
+    self.TopBoxSizer.Add(self.SubBoxSizer, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
+    self.TopBoxSizer.Add(self.FigureCanvas, proportion = -10, border = 2, flag = wx.ALL | wx.EXPAND)
+    
+    self.SetSizer(self.TopBoxSizer)
 
+    self.axes1.grid(True)
+    self.axes2.grid(True)
+  def UpdatePlot(self):
+    self.FigureCanvas.draw()
 
 class PageMonitoring2(wx.Panel):
   def __init__(self, parent, parameter1, parameter2, parameter3):
@@ -116,20 +189,44 @@ class PageMonitoring2(wx.Panel):
 class PageGeneral(wx.Panel):
   def __init__(self, parent):
     wx.Panel.__init__(self, parent)
-    #wx.StaticText(self, label = 'Processor')
+    self.SetBackgroundStyle(wx.BG_STYLE_CUSTOM)
+    self.frame = parent
+    '''
 
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    hSizer = wx.BoxSizer(wx.HORIZONTAL)
+
+    for num in range(4):
+      label = "Button %s" %num
+      btn = wx.Button(self,label = label)
+      sizer.Add(btn, 0, wx.ALL, 5 )
+    hSizer.Add((1,1),1,wx.EXPAND)
+    hSizer.Add(sizer, 0, wx.ALL, 75)
+    self.SetSizer(hSizer)
+    '''
+    self.Bind(wx.EVT_ERASE_BACKGROUND,self.OnEraseBackground)
+    s = '欢迎使用\n姓名：张衍迪\n学号：' + '%s' %(201320133168)
+    wx.StaticText(self, label = s,pos = (400,300))
+  def OnEraseBackground(self,evt):
+    dc = evt.GetDC()
+    
+    if not dc:
+      dc = wx.ClientDC(self)
+      rect = self.GetUpdateRegion().GetBox()
+      dc.SetClippingRect(rect)
+    bmp = wx.Bitmap("butterfly.jpg")
+    dc.DrawBitmap(bmp,250,100)
 
 class MyFrame(wx.Frame):
   def __init__(self, parent, id):
     wx.Frame.__init__(self, parent, id, 'Performance Monitor', size = (800, 600), style = wx.DEFAULT_FRAME_STYLE)
     #wx.Frame.__init__(self, parent, id, 'Performance Monitor', size = (800, 600), style = wx.DEFAULT_FRAME_STYLE^wx.RESIZE_BORDER)
-    self.openAlready = False
+    self.dr = 0
 
     self.processorRecordFile = open(NullFileName, 'w')
     self.memoryRecordFile = open(NullFileName, 'w')
     self.diskRecordFile = open(NullFileName, 'w')
     self.networkRecordFile = open(NullFileName, 'w')
-
     
     self.length = LENGTH
 
@@ -149,10 +246,12 @@ class MyFrame(wx.Frame):
     self.pageMemory = PageMonitoring(self.notebook, 8, 4.5, 100)
     self.notebook.AddPage(self.pageMemory, 'Memory')
 
-    self.pageDisk = PageMonitoring2(self.notebook, 6, 6, 70)
+   # self.pageDisk = PageMonitoring2(self.notebook, 6, 6, 70)
+    self.pageDisk = PageMonitoring3(self.notebook,8,4.5,100)
     self.notebook.AddPage(self.pageDisk, 'Disk')
 
-    self.pageNetwork = PageMonitoring2(self.notebook, 6, 6, 70)
+   # self.pageNetwork = PageMonitoring2(self.notebook, 6, 6, 70)
+    self.pageNetwork = PageMonitoring3(self.notebook, 8 , 4.5, 100)
     self.notebook.AddPage(self.pageNetwork, 'Network')
 
     self.processorUtilization = [None] * self.length 
@@ -164,8 +263,10 @@ class MyFrame(wx.Frame):
 
 
     self.MyCreateTimer()
-
-    self.dataProcessor, = self.pageProcessor.axes.plot(range(1, self.length+1), self.processorUtilization, label = '%')
+    
+    self.pageProcessor.axes.set_title('CPU Monitor')
+    self.dataProcessor, = self.pageProcessor.axes.plot(range(1, self.length+1), self.processorUtilization, label = 'CPU Usage:%')
+    self.pageProcessor.axes.legend(loc='upper right',ncol=4,prop=matplotlib.font_manager.FontProperties(size=10))
     self.pageProcessor.UpdatePlot()
     self.pageProcessor.bg = self.pageProcessor.FigureCanvas.copy_from_bbox(self.pageProcessor.axes.bbox)
 
@@ -174,8 +275,10 @@ class MyFrame(wx.Frame):
     self.pageProcessor.axes.set_yticks(range(0, 101, 10))
     self.pageProcessor.axes.set_xticks([])
     self.pageProcessor.axes.set_autoscale_on(False)
-
-    self.dataMemory, = self.pageMemory.axes.plot(range(1, self.length+1), self.memoryUtilization, label = '%')
+    
+    self.pageMemory.axes.set_title('Memory Monitor')
+    self.dataMemory, = self.pageMemory.axes.plot(range(1, self.length+1), self.memoryUtilization, label = 'Memory Usage:%')
+    self.pageMemory.axes.legend(loc='upper right',ncol=4,prop=matplotlib.font_manager.FontProperties(size=10))
     self.pageMemory.UpdatePlot()
     self.pageMemory.bg = self.pageMemory.FigureCanvas.copy_from_bbox(self.pageMemory.axes.bbox)
 
@@ -184,24 +287,41 @@ class MyFrame(wx.Frame):
     self.pageMemory.axes.set_yticks(range(0, 101, 10))
     self.pageMemory.axes.set_xticks([])
     self.pageMemory.axes.set_autoscale_on(False)
-
+    '''
     self.dataDiskRead, = self.pageDisk.panel1.axes.plot(range(1, self.length+1), self.diskRead, label = '%')
     self.pageDisk.panel1.UpdatePlot()
     self.pageDisk.panel1.bg = self.pageDisk.panel1.FigureCanvas.copy_from_bbox(self.pageDisk.panel1.axes.bbox)
     self.dataDiskWrite, = self.pageDisk.panel2.axes.plot(range(1, self.length+1), self.diskWrite, label = '%')
     self.pageDisk.panel2.UpdatePlot()
     self.pageDisk.panel2.bg = self.pageDisk.panel2.FigureCanvas.copy_from_bbox(self.pageDisk.panel2.axes.bbox)
-
+   
     self.pageDisk.panel1.axes.set_xlim([0, LENGTH])
-    self.pageDisk.panel1.axes.set_ylim([0, 1024])
-    self.pageDisk.panel1.axes.set_yticks(range(0, 1024, 100))
     self.pageDisk.panel1.axes.set_autoscale_on(False)
+    self.pageDisk.panel1.axes.set_ylim([0, 100])
     self.pageDisk.panel2.axes.set_xlim([0, LENGTH])
-    self.pageDisk.panel2.axes.set_ylim([0, 1024])
-    self.pageDisk.panel2.axes.set_yticks(range(0, 1024, 100))
     self.pageDisk.panel2.axes.set_autoscale_on(False)
-
-
+    self.pageDisk.panel2.axes.set_ylim([0, 100])
+    '''
+    self.pageDisk.axes1.set_title('DiskRead Monitor')
+    self.dataDiskRead, = self.pageDisk.axes1.plot(range(1, self.length+1), self.diskRead, label = '%')
+    self.pageDisk.axes1.legend(loc='upper right',ncol=4,prop=matplotlib.font_manager.FontProperties(size=10))
+    self.pageDisk.axes2.set_title('DiskWrite Monitor')
+    self.dataDiskWrite, = self.pageDisk.axes2.plot(range(1, self.length+1), self.diskWrite, label = '%')
+    self.pageDisk.axes2.legend(loc='upper right',ncol=4,prop=matplotlib.font_manager.FontProperties(size=10))
+    self.pageDisk.UpdatePlot()
+    self.pageDisk.bg1 = self.pageDisk.FigureCanvas.copy_from_bbox(self.pageDisk.axes1.bbox)
+    self.pageDisk.bg2 = self.pageDisk.FigureCanvas.copy_from_bbox(self.pageDisk.axes2.bbox)
+    self.pageDisk.axes1.set_ylim([0,1024])
+    self.pageDisk.axes1.set_xlim([0,LENGTH])
+    self.pageDisk.axes1.set_yticks(range(0,1024,100))
+    self.pageDisk.axes1.set_xticks([])
+    self.pageDisk.axes1.set_autoscale_on(False)
+    self.pageDisk.axes2.set_ylim([0,1024])
+    self.pageDisk.axes2.set_xlim([0,LENGTH])
+    self.pageDisk.axes2.set_yticks(range(0,1024,100))
+    self.pageDisk.axes2.set_xticks([])
+    self.pageDisk.axes2.set_autoscale_on(False)
+    '''
     self.dataNetworkReceive, = self.pageNetwork.panel1.axes.plot(range(1, self.length+1), self.networkReceive)
     self.pageNetwork.panel1.UpdatePlot()
     self.pageNetwork.panel1.bg = self.pageNetwork.panel1.FigureCanvas.copy_from_bbox(self.pageNetwork.panel1.axes.bbox)
@@ -210,14 +330,32 @@ class MyFrame(wx.Frame):
     self.pageNetwork.panel2.bg = self.pageNetwork.panel2.FigureCanvas.copy_from_bbox(self.pageNetwork.panel2.axes.bbox)
 
     self.pageNetwork.panel1.axes.set_xlim([0, LENGTH])
-    self.pageNetwork.panel1.axes.set_ylim([0, 100])
-    self.pageNetwork.panel1.axes.set_yticks(range(0, 101, 10))
     self.pageNetwork.panel1.axes.set_autoscale_on(True)
+    self.pageNetwork.panel1.axes.set_ylim([0, 10])
     self.pageNetwork.panel2.axes.set_xlim([0, LENGTH])
-    self.pageNetwork.panel2.axes.set_ylim([0, 100])
-    self.pageNetwork.panel2.axes.set_yticks(range(0, 101, 10))
     self.pageNetwork.panel2.axes.set_autoscale_on(True)
-
+    self.pageNetwork.panel2.axes.set_ylim([0, 10])
+    '''
+    self.pageNetwork.axes1.set_title('Receive')
+    self.dataNetworkReceive, = self.pageNetwork.axes1.plot(range(1,self.length+1),self.networkReceive)
+    self.pageNetwork.axes1.legend(loc='upper right',ncol=4,prop=matplotlib.font_manager.FontProperties(size=10))
+    self.pageNetwork.axes2.set_title('Transmit')
+    self.dataNetworkTransmit, = self.pageNetwork.axes2.plot(range(1,self.length+1),self.networkTransmit)
+    self.pageNetwork.axes2.legend(loc='upper right',ncol=4,prop=matplotlib.font_manager.FontProperties(size=10))
+    self.pageNetwork.UpdatePlot()
+    self.pageNetwork.bg1 = self.pageNetwork.FigureCanvas.copy_from_bbox(self.pageNetwork.axes1.bbox)
+    self.pageNetwork.bg2 = self.pageNetwork.FigureCanvas.copy_from_bbox(self.pageNetwork.axes2.bbox)
+    self.pageNetwork.axes1.set_ylim([0,100])
+    self.pageNetwork.axes1.set_xlim([0,LENGTH])
+    self.pageNetwork.axes1.set_yticks(range(0,101,10))
+    self.pageNetwork.axes1.set_xticks([])
+    self.pageNetwork.axes1.set_autoscale_on(False)
+    self.pageNetwork.axes2.set_ylim([0,100])
+    self.pageNetwork.axes2.set_xlim([0,LENGTH])
+    self.pageNetwork.axes2.set_yticks(range(0,101,10))
+    self.pageNetwork.axes2.set_xticks([])
+    self.pageNetwork.axes2.set_autoscale_on(False)
+    '''
     self.fileCpu = open('/proc/stat')
     self.cpuInfoLast = self.fileCpu.readline().split()[1:-3]
     self.fileCpu.close()
@@ -225,7 +363,12 @@ class MyFrame(wx.Frame):
     for item in self.cpuInfoLast:
       self.cpuTotalTimeLast += int(item)
     self.cpuIdleTimeLast = int(self.cpuInfoLast[3])
+    '''
+    temp = cpuinfo()
+    self.cpuTotalTimeLast = temp[0]
+    self.cpuIdleTimeLast = temp[1]
 
+    '''
     self.diskInfoLast = dict()
     self.diskInfoCurrent = dict()
     self.fileDisk = open('/proc/vmstat')
@@ -236,7 +379,11 @@ class MyFrame(wx.Frame):
       self.diskInfoLast[temp[0]] = int(temp[1])
     self.diskReadLast = self.diskInfoLast['pgpgin']
     self.diskWriteLast = self.diskInfoLast['pgpgout']
-      
+    '''
+    temp = diskinfo()
+    self.diskReadLast = temp[0]
+    self.diskWriteLast = temp[1]
+  
     self.networkInfoLast = dict()
     self.networkInfoCurrent = dict()
     self.fileNetwork = open('/proc/net/dev')
@@ -248,9 +395,8 @@ class MyFrame(wx.Frame):
     self.networkInfoLast.pop('lo')
     self.networkReceiveLast = 0
     self.networkTransmitLast = 0
-    for key, value in self.networkInfoLast.items():
-      self.networkReceiveLast += int(value[0])
-      self.networkTransmitLast += int(value[8])
+    self.networkReceiveLast += int(self.networkInfoLast['eth0'][0])
+    self.networkTransmitLast += int(self.networkInfoLast['eth0'][8])
     '''
     for key, value in self.networkInfoLast.items():
       self.networkReceiveLast += int(value[1-1])
@@ -353,22 +499,19 @@ class MyFrame(wx.Frame):
 
 
   def OnOpen(self, event):
-    #pattern =  "Data file(*.pm)|*.pm|"\
-               #"All files(*.*)|*.*"
-    pattern =  "Data file(*.pm)|*.pm|"
+    pattern =  "Data file(*.pm)|*.pm|"\
+               "All files(*.*)|*.*"
     pathCurrent = os.getcwd()
     dialog = wx.FileDialog(None, "Choose a file", pathCurrent, "", pattern, wx.OPEN)
     if dialog.ShowModal() == wx.ID_OK:
-      filename = dialog.GetPath()
+      filename = dialog.GetPath().split('/')[-1]
       f = open(filename, 'r')
       f.close()
     dialog.Destroy()
-    self.openAlready = True
 
   def OnSave(self, event):
-    #pattern =  "Data file(*.pm)|*.pm|"\
-               #"All files(*.*)|*.*"
-    pattern =  "Data file(*.pm)|*.pm|"
+    pattern =  "Data file(*.pm)|*.pm|"\
+               "All files(*.*)|*.*"
     pathCurrent = os.getcwd()
     dialog = wx.FileDialog(None, "Choose a file", pathCurrent, "", pattern, wx.SAVE|wx.OVERWRITE_PROMPT)
     if dialog.ShowModal() == wx.ID_OK:
@@ -437,8 +580,6 @@ class MyFrame(wx.Frame):
     self.networkRecordFile = open(NullFileName, 'w')
 
   def OnPlay(self, event):
-    if self.openAlready == False:
-      self.OnOpen(event)
     return
 
   def OnPause(self, event):
@@ -471,7 +612,7 @@ class MyFrame(wx.Frame):
     self.cpuIdleTimeLast = int(self.cpuInfoLast[3])
     '''
 
-
+    '''
     self.fileProcessor = open('/proc/stat')
     self.cpuInfoCurrent = self.fileProcessor.readline().split()[1:-3]
     self.fileProcessor.close()
@@ -492,7 +633,19 @@ class MyFrame(wx.Frame):
     self.cpuInfoLast = self.cpuInfoCurrent
     self.cpuTotalTimeLast = self.cpuTotalTimeCurrent
     self.cpuIdleTimeLast = self.cpuIdleTimeCurrent
-
+    '''
+    temp = cpuinfo()
+    self.cpuTotalTimeCurrent = temp[0]
+    self.cpuIdleTimeCurrent = temp[1]
+    total = self.cpuTotalTimeCurrent - self.cpuTotalTimeLast
+    idle = self.cpuIdleTimeCurrent - self.cpuIdleTimeLast
+    rate = 100*(total - idle)/total
+    self.processorRecordFile.write(str(rate) + '\n')
+    self.processorUtilization.pop(0)
+    self.processorUtilization.append(rate)
+    self.cpuTotalTimeLast = self.cpuTotalTimeCurrent
+    self.cpuIdleTimeLast = self.cpuIdleTimeCurrent
+    
   def ProcessorDraw(self):
     self.pageProcessor.FigureCanvas.restore_region(self.pageProcessor.bg)
     self.dataProcessor.set_ydata(self.processorUtilization)
@@ -501,14 +654,16 @@ class MyFrame(wx.Frame):
     
 
   def MemoryMonitoring(self):
+    '''
     self.fileMemory = open('/proc/meminfo')
     memoryTotal = int(self.fileMemory.readline().split()[1])
     memoryFree = int(self.fileMemory.readline().split()[1])
-    memoryBuffers = int(self.fileMemory.readline().split()[1])
-    memoryCached = int(self.fileMemory.readline().split()[1])
-
-    rate = (memoryTotal-memoryFree-memoryBuffers-memoryCached) * 1.0 / memoryTotal * 100
-
+    Buffers = int(self.fileMemory.readline().split()[1])
+    Cached = int(self.fileMemory.readline().split()[1])
+  
+    rate = 100*(memoryTotal - memoryFree - Buffers - Cached)/memoryTotal
+    '''
+    rate = meminfo()
     self.memoryRecordFile.write(str(rate) + '\n')
 
     self.memoryUtilization.pop(0)
@@ -517,10 +672,12 @@ class MyFrame(wx.Frame):
   def MemoryDraw(self):
     self.pageMemory.FigureCanvas.restore_region(self.pageMemory.bg)
     self.dataMemory.set_ydata(self.memoryUtilization)
+
     self.pageMemory.axes.draw_artist(self.dataMemory)
     self.pageMemory.FigureCanvas.blit(self.pageMemory.axes.bbox)
 
   def DiskMonitoring(self):
+    '''
     self.fileDisk = open('/proc/vmstat')
     lines = self.fileDisk.readlines()
     self.fileDisk.close()
@@ -532,30 +689,67 @@ class MyFrame(wx.Frame):
 
     rateRead = (self.diskReadCurrent-self.diskReadLast)*1.0 / (TIMERLENGTH*1.0/1000)
     rateWrite = (self.diskWriteCurrent-self.diskWriteLast)*1.0 / (TIMERLENGTH*1.0/1000) 
+    '''
+    temp = diskinfo()
+    self.diskReadCurrent = temp[0]
+    self.diskWriteCurrent = temp[1]
+    rateRead = (self.diskReadCurrent-self.diskReadLast)/2/TIMERLENGTH
+    rateWrite = (self.diskWriteCurrent - self.diskWriteLast)/2/TIMERLENGTH
 
     self.diskRecordFile.write(str(rateRead) + '\t' + str(rateWrite) + '\n')
-
+ 
     self.diskRead.pop(0)
     self.diskRead.append(rateRead)
     self.diskWrite.pop(0)
     self.diskWrite.append(rateWrite)
+    
 
-    self.diskInfoLast = self.diskInfoCurrent
+    #self.diskInfoLast = self.diskInfoCurrent
     self.diskReadLast = self.diskReadCurrent
     self.diskWriteLast = self.diskWriteCurrent
+   
+    if(max(self.diskRead)<512 and self.dr != 1):
+      self.dr = 1
+      self.pageDisk.axes1.set_ylim([0,512])
+      self.pageDisk.axes1.set_yticks([0,512,10])
+      self.pageDisk.UpdatePlot()
+    if(max(self.diskRead)>512 and self.dr != 0):
+      self.dr = 0
+      self.pageDisk.axes1.set_ylim([0,1024])
+      self.pageDisk.axes1.set_yticks([0,1024,100])
+      self.pageDisk.UpdatePlot()
 
   def DiskDraw(self):
-    self.pageDisk.panel1.axes.set_ylim([0, max(self.diskRead)*1.1])
+    '''
     self.pageDisk.panel1.FigureCanvas.restore_region(self.pageDisk.panel1.bg)
     self.dataDiskRead.set_ydata(self.diskRead)
     self.pageDisk.panel1.axes.draw_artist(self.dataDiskRead)
     self.pageDisk.panel1.FigureCanvas.blit(self.pageDisk.panel1.axes.bbox)
 
-    self.pageDisk.panel2.axes.set_ylim([0, max(self.diskWrite)*1.1])
     self.pageDisk.panel2.FigureCanvas.restore_region(self.pageDisk.panel2.bg)
     self.dataDiskWrite.set_ydata(self.diskWrite)
     self.pageDisk.panel2.axes.draw_artist(self.dataDiskWrite)
     self.pageDisk.panel2.FigureCanvas.blit(self.pageDisk.panel2.axes.bbox)
+    
+    self.pageDisk.FigureCanvas.restore_region(self.pageDisk.bg)
+    self.dataDiskRead.set_ydata(self.diskRead)
+    self.dataDiskWrite.set_ydata(self.diskWrite)
+    self.pageDisk.axes.draw_artist(self.dataDiskRead,self.dataDiskWrite)
+    self.pageDisk.axes.draw_artist(self.dataDiskWrite)
+    self.pageDisk.FigureCanvas.blit(self.pageDisk.axes.bbox)
+    '''
+    
+    self.pageDisk.FigureCanvas.restore_region(self.pageDisk.bg1)
+    self.dataDiskRead.set_ydata(self.diskRead)
+    self.pageDisk.axes1.draw_artist(self.dataDiskRead)
+    self.pageDisk.FigureCanvas.blit(self.pageDisk.axes1.bbox)
+
+
+    self.pageDisk.FigureCanvas.restore_region(self.pageDisk.bg2)    
+    self.dataDiskWrite.set_ydata(self.diskWrite)
+    self.pageDisk.axes2.draw_artist(self.dataDiskWrite)
+    self.pageDisk.FigureCanvas.blit(self.pageDisk.axes2.bbox)
+    
 
   def NetworkMonitoring(self):
     self.fileNetwork = open('/proc/net/dev')
@@ -567,16 +761,16 @@ class MyFrame(wx.Frame):
     self.networkInfoCurrent.pop('lo')
     self.networkReceiveCurrent = 0
     self.networkTransmitCurrent = 0
-    '''
     self.networkReceiveCurrent += int(self.networkInfoCurrent['eth0'][0])
     self.networkTransmitCurrent += int(self.networkInfoCurrent['eth0'][8])
     '''
     for key, value in self.networkInfoCurrent.items():
       self.networkReceiveCurrent += int(value[1-1])
       self.networkTransmitCurrent += int(value[9-1])
+    '''
   
-    rateReceive = (self.networkReceiveCurrent-self.networkReceiveLast)*1.0 / 1024 / 8 / (TIMERLENGTH*1.0/1000) 
-    rateTransmit = (self.networkTransmitCurrent-self.networkTransmitLast)*1.0 / 1024 / 8 / (TIMERLENGTH*1.0/1000)
+    rateReceive = (self.networkReceiveCurrent-self.networkReceiveLast)*1.0 / 1024 / (TIMERLENGTH*1.0/1000) 
+    rateTransmit = (self.networkTransmitCurrent-self.networkTransmitLast)*1.0 / 1024 / (TIMERLENGTH*1.0/1000)
 
     self.networkRecordFile.write(str(rateReceive) + '\t' + str(rateTransmit) + '\n')
 
@@ -585,47 +779,30 @@ class MyFrame(wx.Frame):
     self.networkTransmit.pop(0)
     self.networkTransmit.append(rateTransmit)
 
-    #print self.networkReceiveLast
-    #print self.networkTransmitLast
-
     self.networkInfoLast = self.networkInfoCurrent
     self.networkReceiveLast = self.networkReceiveCurrent
     self.networkTransmitLast = self.networkTransmitCurrent
 
 
   def NetworkDraw(self):
-    if((self.networkReceive[-1]-100)*(self.networkReceive[-2]-100) < 0):
-      if(self.networkReceive[-1] < 100):
-        self.pageNetwork.panel1.axes.set_ylim(0, 100)
-        self.pageNetwork.panel1.axes.set_yticks(range(0, 100, 10))
-        self.pageNetwork.panel1.UpdatePlot()
-      else:
-        self.pageNetwork.panel1.axes.set_ylim(0, 1024)
-        self.pageNetwork.panel1.axes.set_yticks(range(0, 1024, 100))
-        self.pageNetwork.panel1.UpdatePlot()
-        
-    #self.pageNetwork.panel1.axes.set_autoscale_on(True);
+    '''
     self.pageNetwork.panel1.FigureCanvas.restore_region(self.pageNetwork.panel1.bg)
     self.dataNetworkReceive.set_ydata(self.networkReceive)
     self.pageNetwork.panel1.axes.draw_artist(self.dataNetworkReceive)
     self.pageNetwork.panel1.FigureCanvas.blit(self.pageNetwork.panel1.axes.bbox)
-
-    if((self.networkTransmit[-1]-100)*(self.networkTransmit[-2]-100) < 0):
-      if(self.networkTransmit[-1] < 100):
-        self.pageNetwork.panel2.axes.set_ylim(0, 100)
-        self.pageNetwork.panel2.axes.set_yticks(range(0, 100, 10))
-        self.pageNetwork.panel2.UpdatePlot()
-      else:
-        self.pageNetwork.panel2.axes.set_ylim(0, 1024)
-        self.pageNetwork.panel2.axes.set_yticks(range(0, 1024, 100))
-        self.pageNetwork.panel2.UpdatePlot()
-        
-    #self.pageNetwork.panel2.axes.set_autoscale_on(True);
     self.pageNetwork.panel2.FigureCanvas.restore_region(self.pageNetwork.panel2.bg)
     self.dataNetworkTransmit.set_ydata(self.networkTransmit)
     self.pageNetwork.panel2.axes.draw_artist(self.dataNetworkTransmit)
     self.pageNetwork.panel2.FigureCanvas.blit(self.pageNetwork.panel2.axes.bbox)
-
+    '''
+    self.pageNetwork.FigureCanvas.restore_region(self.pageNetwork.bg1)
+    self.dataNetworkReceive.set_ydata(self.networkReceive)
+    self.pageNetwork.axes1.draw_artist(self.dataNetworkReceive)
+    self.pageNetwork.FigureCanvas.blit(self.pageNetwork.axes1.bbox)
+    self.pageNetwork.FigureCanvas.restore_region(self.pageNetwork.bg2)
+    self.dataNetworkTransmit.set_ydata(self.networkTransmit)
+    self.pageNetwork.axes2.draw_artist(self.dataNetworkTransmit)
+    self.pageNetwork.FigureCanvas.blit(self.pageNetwork.axes2.bbox)
   def OnTimer(self, evt):
 
     self.ProcessorMonitoring()
