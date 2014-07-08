@@ -7,10 +7,8 @@ import sys
 import os
 import threading
 import math
-
 import numpy as np
 import matplotlib
-
 
 matplotlib.use("WXAgg")
 
@@ -24,16 +22,20 @@ from matplotlib import pyplot
 LENGTH = 200
 TIMERLENGTH = 50
 
+#系统运行信息文件
 ProcessorFileName = '/proc/stat'
 MemoryFileName = '/proc/meminfo'
 DiskFileName = '/proc/vmstat'
 NetworkFileName = '/proc/net/dev'
+
+#录制信息文件
 ProcessorRecordFileName = 'Processor.data'
 MemoryRecordFileName = 'Memory.data'
 DiskRecordFileName = 'Disk.data'
 NetworkRecordFileName = 'Network.data'
 NullFileName = '/dev/null'
 
+#监控页面类
 class PageMonitoring(wx.Panel):
   def __init__(self, parent, parameter1, parameter2, parameter3):
     wx.Panel.__init__(self, parent)
@@ -70,48 +72,6 @@ class PageMonitoring2(wx.Panel):
     self.TopBoxSizer.Add(self.panel1, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
     self.TopBoxSizer.Add(self.panel2, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
     self.SetSizer(self.TopBoxSizer)
-    '''
-    self.Figure1 = matplotlib.figure.Figure((6,4.5), 70)
-    self.FigureCanvas1 = FigureCanvas(self, -1, self.Figure1)
-    self.Figure2 = matplotlib.figure.Figure((6,4.5), 70)
-    self.FigureCanvas2 = FigureCanvas(self, -1, self.Figure2)
-    self.axes1 = self.Figure1.add_subplot(1,1,1)
-    self.axes2 = self.Figure2.add_subplot(1,1,1)
-
-    self.NavigationToolbar1 = NavigationToolbar(self.FigureCanvas1)
-    self.NavigationToolbar2 = NavigationToolbar(self.FigureCanvas2)
-
-    self.SubBoxSizer1 = wx.BoxSizer(wx.VERTICAL)
-    self.SubBoxSizer1.Add(self.NavigationToolbar1, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
-    self.SubBoxSizer1.Add(self.FigureCanvas1, proportion = -10, border = 2, flag = wx.ALL | wx.EXPAND)
-
-    self.SubBoxSizer2 = wx.BoxSizer(wx.VERTICAL)
-    self.SubBoxSizer2.Add(self.NavigationToolbar2, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
-    self.SubBoxSizer2.Add(self.FigureCanvas2, proportion = -10, border = 2, flag = wx.ALL | wx.EXPAND)
-
-    self.TopBoxSizer = wx.BoxSizer(wx.HORIZONTAL)
-    self.TopBoxSizer.Add(self.SubBoxSizer1, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
-    self.TopBoxSizer.Add(self.SubBoxSizer2, proportion = -1, border = 2, flag = wx.ALL | wx.EXPAND)
-
-    self.SetSizer(self.TopBoxSizer)
-
-    #self.axes.set_ylim([0, 100])
-    #self.axes.set_xlim([0, LENGTH])
-    #self.axes.set_yticks(range(0, 101, 10))
-    #self.axes.set_xticks([])
-    self.axes1.grid(True)
-    self.axes2.grid(True)
-    #self.axes.set_autoscale_on(False)
-
-  def UpdatePlot1(self):
-    self.FigureCanvas1.draw()
-
-  def UpdatePlot2(self):
-    self.FigureCanvas2.draw()
-'''
-
-
-
 
 
 class PageGeneral(wx.Panel):
@@ -141,6 +101,8 @@ class PageGeneral(wx.Panel):
     yBase = 100
     yStep1 = 30
     yStep2 = 40
+
+#显示系统信息
     wx.StaticText(self, label = 'System Information', pos = (xBase-40, yBase-yStep2))
     wx.StaticText(self, label = 'Processor:', pos = (xBase, yBase))
     wx.StaticText(self, label = cpuInformation, pos = (xBase, yBase+yStep1))
@@ -148,13 +110,11 @@ class PageGeneral(wx.Panel):
     wx.StaticText(self, label = memoryInformation + 'KB', pos = (xBase, yBase+yStep1*2+yStep2))
     wx.StaticText(self, label = 'Kernel:', pos = (xBase, yBase+yStep1*2+yStep2*2))
     wx.StaticText(self, label = ' '.join(systemInformation), pos = (xBase, yBase+yStep1*3+yStep2*2))
-    #wx.StaticText(self, label = '闫玉光\n201320133106', pos = (550, 400))
 
 
-
+#主窗体
 class MyFrame(wx.Frame):
   def __init__(self, parent, id):
-    #wx.Frame.__init__(self, parent, id, 'Performance Monitor', size = (800, 600), style = wx.DEFAULT_FRAME_STYLE)
     wx.Frame.__init__(self, parent, id, 'Performance Monitor', size = (800, 600), style = wx.DEFAULT_FRAME_STYLE^wx.RESIZE_BORDER)
 
     self.openAlready = False
@@ -162,21 +122,26 @@ class MyFrame(wx.Frame):
     self.pause = False
     self.lastSelection = 0
 
+    #不进行录制时，将监控信息写入null设备
     self.processorRecordFile = open(NullFileName, 'w')
     self.memoryRecordFile = open(NullFileName, 'w')
     self.diskRecordFile = open(NullFileName, 'w')
     self.networkRecordFile = open(NullFileName, 'w')
-
     
     self.length = LENGTH
 
+    #创建状态栏
     statusBar = self.CreateStatusBar()
 
+    #创建菜单栏
     self.MyCreateMenuBar()
+
+    #创建工具栏
     self.MyCreateToolBar()
 
     self.notebook = wx.Notebook(self)
 
+    #添加监控信息页面
     self.pageGeneral = PageGeneral(self.notebook)
     self.notebook.AddPage(self.pageGeneral, 'General')
 
@@ -200,8 +165,11 @@ class MyFrame(wx.Frame):
     self.networkTransmit = [None] * self.length 
 
 
+    #创建定时器
     self.MyCreateTimer()
 
+    
+    #监控页面准备
     self.dataProcessor, = self.pageProcessor.axes.plot(range(1, self.length+1), self.processorUtilization, label = '%')
     self.pageProcessor.axes.legend(loc = 'upper right', ncol = 4, prop = matplotlib.font_manager.FontProperties(size=10))
     self.pageProcessor.UpdatePlot()
@@ -294,22 +262,8 @@ class MyFrame(wx.Frame):
     for key, value in self.networkInfoLast.items():
       self.networkReceiveLast += int(value[0])
       self.networkTransmitLast += int(value[8])
-    '''
-    for key, value in self.networkInfoLast.items():
-      self.networkReceiveLast += int(value[1-1])
-      self.networkTransmitLast += int(value[9-1])
-    '''
-
 
     self.timer.Start(TIMERLENGTH)
-
-  '''
-  def MyOpenFiles(self):
-    self.fileCpu = open('/proc/stat')
-    self.fileMemory = open('/proc/meminfo')
-    self.fileDisk = open('/proc/vmstat')
-    self.fileNetwork = open('/proc/net/dev')
-  '''
 
   def MyCreateTimer(self):
     self.timer = wx.Timer(self)
@@ -342,14 +296,6 @@ class MyFrame(wx.Frame):
     self.Bind(wx.EVT_MENU, self.OnEnd, menuActionItemEnd)
     menuBar.Append(menuAction, "&Action")
 
-    '''
-    menuConfig = wx.Menu()
-    menuConfigItem1 = menuConfig.Append(-1, "config1")
-    menuConfigItem2 = menuConfig.Append(-1, "config2")
-    self.Bind(wx.EVT_MENU, self.OnConfig1, menuConfigItem1)
-    self.Bind(wx.EVT_MENU, self.OnConfig2, menuConfigItem2)
-    menuBar.Append(menuConfig, "&Configuration")
-    '''
 
     menuHelp = wx.Menu()
     menuHelpItemVersion = menuHelp.Append(-1, "&Version")
@@ -364,7 +310,6 @@ class MyFrame(wx.Frame):
   def MyCreateToolBar(self):
     toolBar = self.CreateToolBar()
 
-    #bmpOpen = wx.Image("open.png", wx.BITMAP_TYPE_BMP).ConvertToBitmap()
     bmpOpen = wx.Image("icon/open.png", wx.BITMAP_TYPE_PNG).Rescale(72, 72).ConvertToBitmap()
     toolOpen = toolBar.AddSimpleTool(-1, bmpOpen, 'Open', "Open a record file and display it.")
     self.Bind(wx.EVT_MENU, self.OnOpen, toolOpen)
@@ -396,24 +341,20 @@ class MyFrame(wx.Frame):
     toolBar.Realize()
 
 
-
-
+  #打开录制信息文件
   def OnOpen(self, event):
-    #pattern =  "Data file(*.pm)|*.pm|"\
-               #"All files(*.*)|*.*"
     pattern =  "Data file(*.pm)|*.pm|"
     pathCurrent = os.getcwd()
     dialog = wx.FileDialog(None, "Choose a file", pathCurrent, "", pattern, wx.OPEN)
     if dialog.ShowModal() == wx.ID_OK:
       self.projectFilename = dialog.GetPath()
       f = open(self.projectFilename, 'r')
+      self.openAlready = True
       f.close()
     dialog.Destroy()
-    self.openAlready = True
 
+  #储存录制信息文件
   def OnSave(self, event):
-    #pattern =  "Data file(*.pm)|*.pm|"\
-               #"All files(*.*)|*.*"
     pattern =  "Data file(*.pm)|*.pm|"
     pathCurrent = os.getcwd()
     dialog = wx.FileDialog(None, "Choose a file", pathCurrent, "", pattern, wx.SAVE|wx.OVERWRITE_PROMPT)
@@ -431,9 +372,11 @@ class MyFrame(wx.Frame):
     dialog.Destroy()
 
     
+  #退出
   def OnExit(self, event):
     self.Close(True)
 
+  #开始录制
   def OnRecord(self, event):
     self.processorUtilization = [None] * self.length 
     self.memoryUtilization = [None] * self.length 
@@ -447,23 +390,9 @@ class MyFrame(wx.Frame):
     self.memoryRecordFile = open(MemoryRecordFileName, 'w')
     self.diskRecordFile = open(DiskRecordFileName, 'w')
     self.networkRecordFile = open(NetworkRecordFileName, 'w')
-    '''
-    selection = self.notebook.GetSelection()
-    if selection == 0:
-      pass
-    elif selection == 1:
-      self.ProcessorDraw()
-    elif selection == 2:
-      self.MemoryDraw()
-    elif selection == 3:
-      self.DiskDraw()
-    elif selection == 4:
-      self.NetworkDraw()
-      '''
 
 
-
-
+  #停止录制
   def OnStop(self, event):
     self.processorRecordFile.close()
     self.memoryRecordFile.close()
@@ -482,6 +411,7 @@ class MyFrame(wx.Frame):
     self.diskRecordFile = open(NullFileName, 'w')
     self.networkRecordFile = open(NullFileName, 'w')
 
+  #开始播放录制信息
   def OnPlay(self, event):
     self.pause = False
     if self.openAlready == False:
@@ -505,45 +435,34 @@ class MyFrame(wx.Frame):
     self.diskWrite = [None] * self.length
     self.networkReceive = [None] * self.length
     self.networkTransmit = [None] * self.length
-    
-
 
     return
 
+  #暂停播放录制信息
   def OnPause(self, event):
     self.pause = not self.pause 
 
+  #停止播放录制信息
   def OnEnd(self, event):
     self.OnStop(event)
     self.pause = False
     self.play = False 
 
-  '''
-  def OnConfig1(self, event):
-    return 
 
-  def OnConfig2(self, event):
-    return 
-    '''
-
+  #显示版本信息
   def OnVersion(self, event):
     dialog = wx.MessageDialog(None, "\nVersion 1.0.0\n", 'Version', wx.OK)
     returnCode = dialog.ShowModal()
     dialog.Destroy()
 
+  #显示作者信息
   def OnAbout(self, event):
     dialog = wx.MessageDialog(None, "闫玉光\n201320133106\n华南理工大学", 'About', wx.OK)
     returnCode = dialog.ShowModal()
     dialog.Destroy()
 
+  #处理器信息监控
   def ProcessorMonitoring(self):
-    '''
-    self.cpuTotalTimeLast = 0
-    for item in self.cpuInfoLast:
-      self.cpuTotalTimeLast += int(item)
-    self.cpuIdleTimeLast = int(self.cpuInfoLast[3])
-    '''
-
 
     self.fileProcessor = open('/proc/stat')
     self.cpuInfoCurrent = self.fileProcessor.readline().split()[1:-3]
@@ -566,6 +485,7 @@ class MyFrame(wx.Frame):
     self.cpuTotalTimeLast = self.cpuTotalTimeCurrent
     self.cpuIdleTimeLast = self.cpuIdleTimeCurrent
 
+  #处理器信息绘制
   def ProcessorDraw(self):
     self.pageProcessor.FigureCanvas.restore_region(self.pageProcessor.bg)
     self.dataProcessor.set_ydata(self.processorUtilization)
@@ -573,6 +493,7 @@ class MyFrame(wx.Frame):
     self.pageProcessor.FigureCanvas.blit(self.pageProcessor.axes.bbox)
     
 
+  #内存信息监控
   def MemoryMonitoring(self):
     self.fileMemory = open('/proc/meminfo')
     memoryTotal = int(self.fileMemory.readline().split()[1])
@@ -587,12 +508,14 @@ class MyFrame(wx.Frame):
     self.memoryUtilization.pop(0)
     self.memoryUtilization.append(rate)
 
+  #内存信息绘制
   def MemoryDraw(self):
     self.pageMemory.FigureCanvas.restore_region(self.pageMemory.bg)
     self.dataMemory.set_ydata(self.memoryUtilization)
     self.pageMemory.axes.draw_artist(self.dataMemory)
     self.pageMemory.FigureCanvas.blit(self.pageMemory.axes.bbox)
 
+  #磁盘信息监控
   def DiskMonitoring(self):
     self.fileDisk = open('/proc/vmstat')
     lines = self.fileDisk.readlines()
@@ -617,6 +540,7 @@ class MyFrame(wx.Frame):
     self.diskReadLast = self.diskReadCurrent
     self.diskWriteLast = self.diskWriteCurrent
 
+  #磁盘信息绘制
   def DiskDraw(self):
     if( self.diskRead[-1] == max(self.diskRead) and self.diskRead[-1] != 0):
       maxTemp = int((self.diskRead[-1]+10) * 1.2)
@@ -630,18 +554,17 @@ class MyFrame(wx.Frame):
       self.pageDisk.panel2.axes.set_yticks(range(0, maxTemp, maxTemp/10))
       self.pageDisk.panel2.UpdatePlot()
 
-    #self.pageDisk.panel1.axes.set_ylim([0, max(self.diskRead)*1.1])
     self.pageDisk.panel1.FigureCanvas.restore_region(self.pageDisk.panel1.bg)
     self.dataDiskRead.set_ydata(self.diskRead)
     self.pageDisk.panel1.axes.draw_artist(self.dataDiskRead)
     self.pageDisk.panel1.FigureCanvas.blit(self.pageDisk.panel1.axes.bbox)
 
-    #self.pageDisk.panel2.axes.set_ylim([0, max(self.diskWrite)*1.1])
     self.pageDisk.panel2.FigureCanvas.restore_region(self.pageDisk.panel2.bg)
     self.dataDiskWrite.set_ydata(self.diskWrite)
     self.pageDisk.panel2.axes.draw_artist(self.dataDiskWrite)
     self.pageDisk.panel2.FigureCanvas.blit(self.pageDisk.panel2.axes.bbox)
 
+  #网络信息监控
   def NetworkMonitoring(self):
     self.fileNetwork = open('/proc/net/dev')
     lines = self.fileNetwork.readlines()
@@ -652,10 +575,6 @@ class MyFrame(wx.Frame):
     self.networkInfoCurrent.pop('lo')
     self.networkReceiveCurrent = 0
     self.networkTransmitCurrent = 0
-    '''
-    self.networkReceiveCurrent += int(self.networkInfoCurrent['eth0'][0])
-    self.networkTransmitCurrent += int(self.networkInfoCurrent['eth0'][8])
-    '''
     for key, value in self.networkInfoCurrent.items():
       self.networkReceiveCurrent += int(value[1-1])
       self.networkTransmitCurrent += int(value[9-1])
@@ -670,14 +589,12 @@ class MyFrame(wx.Frame):
     self.networkTransmit.pop(0)
     self.networkTransmit.append(rateTransmit)
 
-    #print self.networkReceiveLast
-    #print self.networkTransmitLast
-
     self.networkInfoLast = self.networkInfoCurrent
     self.networkReceiveLast = self.networkReceiveCurrent
     self.networkTransmitLast = self.networkTransmitCurrent
 
 
+  #网络信息绘制
   def NetworkDraw(self):
     if( self.networkReceive[-1] == max(self.networkReceive) and self.networkReceive[-1] != 0):
       maxTemp = int((self.networkReceive[-1]+10) * 1.2)
@@ -691,42 +608,18 @@ class MyFrame(wx.Frame):
       self.pageNetwork.panel2.axes.set_yticks(range(0, maxTemp, maxTemp/10))
       self.pageNetwork.panel2.UpdatePlot()
 
-    '''
-    if((self.networkReceive[-1]-100)*(self.networkReceive[-2]-100) < 0):
-      if(self.networkReceive[-1] < 100):
-        self.pageNetwork.panel1.axes.set_ylim(0, 100)
-        self.pageNetwork.panel1.axes.set_yticks(range(0, 100, 10))
-        self.pageNetwork.panel1.UpdatePlot()
-      else:
-        self.pageNetwork.panel1.axes.set_ylim(0, 1024)
-        self.pageNetwork.panel1.axes.set_yticks(range(0, 1024, 100))
-        self.pageNetwork.panel1.UpdatePlot()
-        '''
         
-    #self.pageNetwork.panel1.axes.set_autoscale_on(True);
     self.pageNetwork.panel1.FigureCanvas.restore_region(self.pageNetwork.panel1.bg)
     self.dataNetworkReceive.set_ydata(self.networkReceive)
     self.pageNetwork.panel1.axes.draw_artist(self.dataNetworkReceive)
     self.pageNetwork.panel1.FigureCanvas.blit(self.pageNetwork.panel1.axes.bbox)
 
-    '''
-    if((self.networkTransmit[-1]-100)*(self.networkTransmit[-2]-100) < 0):
-      if(self.networkTransmit[-1] < 100):
-        self.pageNetwork.panel2.axes.set_ylim(0, 100)
-        self.pageNetwork.panel2.axes.set_yticks(range(0, 100, 10))
-        self.pageNetwork.panel2.UpdatePlot()
-      else:
-        self.pageNetwork.panel2.axes.set_ylim(0, 1024)
-        self.pageNetwork.panel2.axes.set_yticks(range(0, 1024, 100))
-        self.pageNetwork.panel2.UpdatePlot()
-        '''
-        
-    #self.pageNetwork.panel2.axes.set_autoscale_on(True);
     self.pageNetwork.panel2.FigureCanvas.restore_region(self.pageNetwork.panel2.bg)
     self.dataNetworkTransmit.set_ydata(self.networkTransmit)
     self.pageNetwork.panel2.axes.draw_artist(self.dataNetworkTransmit)
     self.pageNetwork.panel2.FigureCanvas.blit(self.pageNetwork.panel2.axes.bbox)
 
+  #处理器录制信息播放
   def ProcessorPlay(self):
     if self.pause:
       return
@@ -736,6 +629,7 @@ class MyFrame(wx.Frame):
     self.processorUtilization.pop(0)
     self.processorUtilization.append(float(temp[0]))
 
+  #内存录制信息播放
   def MemoryPlay(self):
     if self.pause:
       return
@@ -745,6 +639,7 @@ class MyFrame(wx.Frame):
     self.memoryUtilization.pop(0)
     self.memoryUtilization.append(float(temp[0]))
 
+  #磁盘录制信息播放
   def DiskPlay(self):
     if self.pause:
       return
@@ -756,6 +651,7 @@ class MyFrame(wx.Frame):
     self.diskWrite.pop(0)
     self.diskWrite.append(float(temp[1]))
 
+  #网络录制信息播放
   def NetworkPlay(self):
     if self.pause:
       return
@@ -768,19 +664,25 @@ class MyFrame(wx.Frame):
     self.networkTransmit.append(float(temp[1]))
 
 
+  #定时器操作
   def OnTimer(self, evt):
 
+    #播放
     if self.play:
       self.ProcessorPlay()
       self.MemoryPlay()
       self.DiskPlay()
       self.NetworkPlay()
+    #监控
     else:
       self.ProcessorMonitoring()
       self.MemoryMonitoring()
       self.DiskMonitoring()
       self.NetworkMonitoring()
 
+
+    #绘制
+    #只绘制当前页面
     selection = self.notebook.GetSelection()
 
     if selection == 0:
@@ -802,7 +704,6 @@ class MyFrame(wx.Frame):
         self.pageDisk.panel2.axes.set_ylim(0, maxTemp)
         self.pageDisk.panel2.axes.set_yticks(range(0, maxTemp, maxTemp/10))
         self.pageDisk.panel2.UpdatePlot()
-
       self.lastSelection = 3
       self.DiskDraw()
     elif selection == 4:
@@ -815,11 +716,8 @@ class MyFrame(wx.Frame):
         self.pageNetwork.panel2.axes.set_ylim(0, maxTemp)
         self.pageNetwork.panel2.axes.set_yticks(range(0, maxTemp, maxTemp/10))
         self.pageNetwork.panel2.UpdatePlot()
-
       self.lastSelection = 4
       self.NetworkDraw()
-
-
 
 
 class App(wx.App):
@@ -830,12 +728,18 @@ class App(wx.App):
     return True
 
 def main():
-  os.system('rm ' + 'Processor.data ')
-  os.system('rm ' + 'Memory.data ')
-  os.system('rm ' + 'Disk.data ')
-  os.system('rm ' + 'Network.data ')
+  if os.path.exists('Processor.data'):
+    os.system('rm ' + 'Processor.data ')
+  if os.path.exists('Memory.data'):
+    os.system('rm ' + 'Memory.data ')
+  if os.path.exists('Disk.data'):
+    os.system('rm ' + 'Disk.data ')
+  if os.path.exists('Network.data'):
+    os.system('rm ' + 'Network.data ')
   app = App()
   app.MainLoop()
 
 if __name__ == '__main__':
   main()
+
+
